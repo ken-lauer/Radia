@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "radia"
+version = "1.0.0"
+description = "Radia 3D magnetostatics code (Python interface)"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    { name = "O. Chubar" },
+    { name = "P. Elleaume" },
+    { name = "J. Chavanne" },
+]
+
+[project.urls]
+Homepage = "https://github.com/ochubar/Radia"
+
+[tool.setuptools]
+packages = []

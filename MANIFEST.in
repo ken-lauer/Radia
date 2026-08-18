@@ -1,0 +1,8 @@
+include Makefile
+include COPYRIGHT.txt
+include MANIFEST.in
+recursive-include cpp/src *
+include cpp/gcc/Makefile
+include cpp/gcc/Makefile_intermed
+include cpp/py/Makefile
+include cpp/py/setup.py

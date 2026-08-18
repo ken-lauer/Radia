@@ -26,6 +26,24 @@ shipped in `env/`.
 
 ### 1. Python module — build from source (Linux)
 
+#### Installing with pip
+
+The repository is pip-installable. From the repository root:
+
+```sh
+pip install .
+```
+
+This runs the same `make` stages described below (building FFTW first if
+`ext_lib/libfftw.a` is missing, then the C++ core `libradia.a`) and then
+compiles the `radia` extension against the interpreter pip is installing
+into, so the module always matches your Python version. For the MPI variants
+set `RADIA_MODE` (e.g. `RADIA_MODE=mpi pip install .`); with a conda OpenMPI
+this picks up headers and libraries from `$CONDA_PREFIX` automatically.
+
+A working C++ toolchain is required; in a conda environment, `conda install
+cxx-compiler make` provides one.
+
 #### Prerequisites
 
 - `gcc`/`g++` (or `cc`/`c++`) and GNU `make`
