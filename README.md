@@ -130,23 +130,31 @@ For an MPI build, add MPI from conda-forge as well:
 conda install -c conda-forge openmpi mpi4py   # or: mpich mpi4py
 ```
 
-The `MODE=mpi` / `MODE=mpi_nersc` paths hardcoded in `cpp/gcc/Makefile` and
-`cpp/py/setup.py` are for BNL/NERSC systems, so point them at the conda
-environment instead:
+then build with:
 
-1. In `cpp/gcc/Makefile`, set the MPI include path to the conda environment,
-   e.g. replace the `MPI_INCLUDE_DIR_*` values with `$(CONDA_PREFIX)/include`.
-2. In the `mpi` branch of `cpp/py/setup.py`, replace
-   `/usr/lib/openmpi/include` and `/usr/lib/openmpi/lib` with
-   `os.environ['CONDA_PREFIX'] + '/include'` and `... + '/lib'`, and adjust
-   the `libraries` list to what your MPI provides: `mpi` for OpenMPI ≥ 5
-   (which dropped the C++ bindings, so drop `mpi_cxx`), `mpi_cxx` + `mpi` for
-   OpenMPI 4.x, or `mpicxx` + `mpi` for MPICH.
-3. Build with `make MODE=mpi`.
+```sh
+make MODE=mpi
+```
 
-At runtime, `LD_LIBRARY_PATH` is usually unnecessary inside an activated
-conda environment, and the MPI examples run with the conda-provided `mpiexec`
-(see `RADIA_TestParallel01_mpi4py.py` for starting MPI via `mpi4py`).
+When `CONDA_PREFIX` is set (i.e. inside an activated conda environment),
+`cpp/gcc/Makefile` and `cpp/py/setup.py` take the MPI headers and libraries
+from the environment automatically; otherwise they fall back to the
+`/usr/lib/openmpi` paths used on BNL servers. Radia uses only the C MPI API,
+so the module links plain `libmpi` — this works with OpenMPI 4.x and ≥ 5
+(which dropped the C++ bindings). For MPICH-based clusters use
+`MODE=mpi_nersc` and adjust the `mpi_nersc` branch of `cpp/py/setup.py`.
+
+Verify the parallel build with the conda-provided `mpiexec`:
+
+```sh
+cd env/radia_python
+mpiexec -n 2 python RADIA_TestParallel01_mpi4py.py
+```
+
+All ranks should report the same field value after relaxation. (A trailing
+`RuntimeError: This function is not implemented on that platform.` comes
+from the example's `ObjDrwOpenGL` call — the OpenGL viewer is only built on
+Windows — and is unrelated to MPI.)
 
 #### macOS note
 

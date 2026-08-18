@@ -24,11 +24,15 @@ ext_kwargs = {'define_macros': [('MAJOR_VERSION', '1'), ('MINOR_VERSION', '0')],
 
 if 'MODE' in os.environ: 
     sMode = str(os.environ['MODE'])
-    if sMode == 'mpi': 
+    if sMode == 'mpi':
+        #OpenMPI location: conda environment if active, otherwise the system
+        #path used on BNL servers. Only the C MPI API is used, so libmpi
+        #suffices (libmpi_cxx was dropped in OpenMPI 5).
+        mpi_root = os.environ.get('CONDA_PREFIX', '/usr/lib/openmpi')
         ext_kwargs.update({
-            'include_dirs': [os.path.abspath('../src/lib'), os.path.abspath('../src/ext/auxparse'), os.path.abspath('../src/core'), os.path.abspath('/usr/lib/openmpi/include')], #os.path.abspath('/usr/lib/openmpi/include/openmpi')], #MPI comp. test #OC03112019 requested by R. Nagler
-            'libraries': ['radia', 'm', 'fftw', 'mpi_cxx', 'dl'], #for compilation with OpenMPI, tested on servers at BNL
-            'library_dirs': [os.path.abspath('../gcc'), os.path.abspath('../../ext_lib'), os.path.abspath('/usr/lib/openmpi/lib')]})
+            'include_dirs': [os.path.abspath('../src/lib'), os.path.abspath('../src/ext/auxparse'), os.path.abspath('../src/core'), os.path.join(mpi_root, 'include')],
+            'libraries': ['radia', 'm', 'fftw', 'mpi', 'dl'],
+            'library_dirs': [os.path.abspath('../gcc'), os.path.abspath('../../ext_lib'), os.path.join(mpi_root, 'lib')]})
     elif sMode == 'mpi_nersc': #for compilation with MPICH, tested on NERSC cluster
         ext_kwargs.update({
             'libraries': ['radia', 'm', 'fftw', 'mpichcxx_intel', 'dl'],

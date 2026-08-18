@@ -59,7 +59,11 @@ LDFLAGS=	-L$(LIB_DIR) -lm -lfftw -lpthread -lrt -ldl -luuid
 MODE ?= 0
 
 ifeq ($(MODE), mpi)
+ifdef CONDA_PREFIX
+LIBCFLAGS+= -I$(CONDA_PREFIX)/include -D_WITH_MPI
+else
 LIBCFLAGS+= -I$(MPI_INCLUDE_DIR_01) -I$(MPI_INCLUDE_DIR_02) -D_WITH_MPI
+endif
 else
 ifeq ($(MODE), mpi_nersc)
 LIBCFLAGS += -D_WITH_MPI
