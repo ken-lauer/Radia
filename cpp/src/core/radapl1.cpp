@@ -2386,7 +2386,7 @@ int radTApplication::ProcMPI(const char* sCommand, double* arData, long* pnData,
 				//std::cout << "rank=" << m_rankMPI << " arDataLoc[0]=" << arDataLoc[0] << " arDataLoc[1]=" << arDataLoc[1] << "\n"; //DEBUG
 				//std::cout.flush(); //DEBUG
 
-				int Dims[] = { nData };
+				int Dims[] = { (int)nData };
 				Send.MultiDimArrayOfDouble(arDataLoc, Dims, 1); //Do this for all ranks, even if for m_rankMPI == rankFrom this is not necessary
 
 				if(m_rankMPI != rankFrom) delete[] arDataLoc;
