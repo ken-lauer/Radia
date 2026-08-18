@@ -1694,7 +1694,7 @@ void radTApplication::OutFieldCompRes(char* FieldChar, radTField* FieldArray, lo
 		FieldPtr++;
 		BufChar = ActualInitCharPtr;
 	}
-	int Dims[] = { InnerCount, Np};
+	int Dims[] = { InnerCount, (int)Np};
 	Send.MultiDimArrayOfDouble(TotOutArray, Dims, 2);
 
 	if(TotOutArray != 0) delete[] TotOutArray;

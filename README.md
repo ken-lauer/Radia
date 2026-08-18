@@ -150,11 +150,17 @@ conda environment, and the MPI examples run with the conda-provided `mpiexec`
 
 #### macOS note
 
-The GCC Makefiles target Linux (`-DLINUX`, `-lrt`, `-luuid`, GNU `sed -i`
-syntax in the FFTW step), so a source build on macOS requires minor Makefile
-edits (drop `-lrt`/`-luuid`, use `sed -i ''`, remove/replace `-DLINUX`).
-This applies to conda-forge builds on macOS too, where the compilers are
-Clang-based.
+`make all` works on macOS (including Apple Silicon): the Makefiles detect
+Darwin and skip `-DLINUX` (which only gates glibc x87 FPU-control code in
+`triangle.c`), and the FFTW stage passes a `--build` triplet that
+FFTW 2.1.5's 1999-era `config.guess` understands.
+
+One gotcha: `ext_lib/libfftw.a` is platform-specific. If the checked-in (or
+previously built) archive is for another platform, the macOS linker silently
+ignores it and the build still "succeeds" thanks to
+`-undefined dynamic_lookup` — the failure only appears at import time as
+`symbol not found in flat namespace '_fftw'`. Fix by rebuilding it natively
+with `make fftw` (or `make all`).
 
 ---
 

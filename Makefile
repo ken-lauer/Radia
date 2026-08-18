@@ -21,6 +21,11 @@ examples_dir = $(env_dir)/radia_python
 export MODE ?= 0
 timeout=20
 
+# fftw-2.1.5's 1999-era config.guess cannot identify modern macOS
+ifeq ($(shell uname -s), Darwin)
+fftw_configure_opts = --build=$(subst arm64,arm,$(shell uname -m))-apple-darwin
+endif
+
 nofftw: core pylib
 
 all: clean fftw core pylib
@@ -38,8 +43,7 @@ fftw:
 	fi; \
 	tar -zxf $(fftw_file); \
 	cd $(fftw_dir); \
-	./configure --enable-float --with-pic; \
-	sed 's/^CFLAGS = /CFLAGS = -fPIC /' -i Makefile; \
+	CFLAGS="-O3 -fPIC" ./configure --enable-float --with-pic $(fftw_configure_opts); \
 	make -j8 && cp fftw/.libs/libfftw.a $(ext_dir); \
 	cd $(root_dir); \
 	rm -rf $(ext_dir)/$(fftw_dir);
