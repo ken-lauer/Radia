@@ -59,6 +59,11 @@ geometry -- inline in Jupyter, or a native window from a script::
 solid colours otherwise come from ``radia.ObjDrwAtr`` (both backends honour them).
 PyVista is imported lazily, so this module still works where only matplotlib
 (or neither) is installed.
+
+In Jupyter, PyVista uses the interactive ``trame`` backend by default.  It is
+smooth cell-by-cell but its async widgets clash with *Restart & Run All*; for a
+run-all pass call ``upr.set_pyvista_backend('static')`` (plain image), then switch
+back to ``'trame'``.  See the Notes in :func:`plot_geometry_pyvista`.
 """
 
 from __future__ import absolute_import, division, print_function
@@ -320,7 +325,7 @@ def plot_geometry_pyvista(obj, color=None, opacity=1.0, show_edges=True,
                           edge_color='gray', line_width=3, background='white',
                           notebook=None, off_screen=False, screenshot=None,
                           window_size=(1024, 768), plotter=None, title=None,
-                          show_axes=True, show=True):
+                          show_axes=True, show=True, jupyter_backend=None):
     """Render RADIA object ``obj`` interactively with PyVista / VTK.
 
     Correct occlusion and interaction (rotate / zoom / pick) -- a better fit than
@@ -363,11 +368,38 @@ def plot_geometry_pyvista(obj, color=None, opacity=1.0, show_edges=True,
         Show the orientation axes widget and a bounding-box grid with mm labels.
     show : bool, optional
         Display the plotter when this call created it.
+    jupyter_backend : str, optional
+        PyVista Jupyter backend for this display: ``'trame'`` (interactive,
+        default) / ``'static'`` (plain image) / ``'client'`` / ``'html'``.
+        ``None`` uses the module default (:func:`set_pyvista_backend`, ``'trame'``
+        initially).  Ignored outside Jupyter.  See Notes.
 
     Returns
     -------
     plotter : pyvista.Plotter
         The plotter the geometry was drawn into.
+
+    Notes
+    -----
+    **"Restart & Run All" and the trame backend.**  The default ``'trame'``
+    backend (and ``'client'`` / ``'html'``) renders through trame's async Jupyter
+    widgets.  Running cells one at a time is fine -- you get smooth interactive
+    rotate / zoom / pick.  But when many geometry cells execute back-to-back under
+    *Restart & Run All*, trame tries to set up a new render while the previous
+    one's async context is still live on the kernel's event loop, raising::
+
+        RuntimeError: cannot enter context: <Context> is already entered
+
+    (plus ``Task was destroyed but it is pending`` / ``coroutine ... was never
+    awaited``).  This is a trame + ipykernel event-loop race, pronounced on the
+    very new Python 3.14; the geometry and this renderer are fine.  Options:
+
+    * run the geometry cells individually (recommended -- keeps interactivity), or
+    * switch to the image backend just for a run-all pass::
+
+          uti_plot_radia.set_pyvista_backend('static')   # plain image, run-all safe
+
+      then back to ``set_pyvista_backend('trame')`` for interactive exploration.
     """
     import radia as rad
     import numpy as np
@@ -408,8 +440,27 @@ def plot_geometry_pyvista(obj, color=None, opacity=1.0, show_edges=True,
     if screenshot is not None and not (own and show):
         plotter.screenshot(screenshot)
     if own and show:
-        plotter.show(screenshot=screenshot)
+        show_kw = {'screenshot': screenshot}
+        # In Jupyter, pick a non-server backend by default so "Run All" (which
+        # fires cells back-to-back) does not re-enter trame's async context.
+        if _in_jupyter():
+            jb = jupyter_backend or _PYVISTA_JUPYTER_BACKEND
+            if jb is not None:
+                show_kw['jupyter_backend'] = jb
+        plotter.show(**show_kw)
     return plotter
+
+
+def _in_jupyter():
+    """Return ``True`` when running inside a Jupyter/ZMQ kernel (not a terminal).
+
+    Used to decide whether to hand ``plotter.show`` a Jupyter backend.
+    """
+    try:
+        ip = get_ipython()  # noqa: F821 -- injected by IPython
+    except NameError:
+        return False
+    return ip is not None and type(ip).__name__ == 'ZMQInteractiveShell'
 
 
 # ---------------------------------------------------------------------------
@@ -417,6 +468,37 @@ def plot_geometry_pyvista(obj, color=None, opacity=1.0, show_edges=True,
 # ---------------------------------------------------------------------------
 
 _DEFAULT_BACKEND = 'matplotlib'   # what the patched ObjDrwOpenGL uses
+
+# PyVista Jupyter backend used by plot_geometry_pyvista when it shows a plot in a
+# notebook.  Default 'trame' = full interactivity (smooth rotate / zoom / pick),
+# which is what you want for larger models.  The only run-all-safe option is
+# 'static' (a plain inline image); every interactive backend ('trame'/'client'/
+# 'html') goes through trame's async widgets -- see the Notes in
+# plot_geometry_pyvista for the "Restart & Run All" caveat.
+_PYVISTA_JUPYTER_BACKEND = 'trame'
+
+
+def set_pyvista_backend(name):
+    """Set the PyVista Jupyter backend used by :func:`plot_geometry_pyvista`.
+
+    Parameters
+    ----------
+    name : {'trame', 'static', 'client', 'html', 'server', 'none', None}
+        ``'trame'`` (default) gives full interactive rotate / zoom / pick.
+        ``'static'`` is a plain inline image -- the only option safe under
+        "Restart & Run All" (no trame async).  ``'client'`` / ``'html'`` are also
+        interactive but, like ``'trame'``, go through trame's async widgets.
+        ``None`` defers to PyVista's own global setting.  See the Notes in
+        :func:`plot_geometry_pyvista`.
+
+    Returns
+    -------
+    str or None
+        The backend now in effect.
+    """
+    global _PYVISTA_JUPYTER_BACKEND
+    _PYVISTA_JUPYTER_BACKEND = name
+    return _PYVISTA_JUPYTER_BACKEND
 
 
 def set_backend(name):
