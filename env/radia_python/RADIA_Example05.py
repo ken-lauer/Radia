@@ -6,6 +6,9 @@
 
 from __future__ import absolute_import, division, print_function #Py 2.*/3.* compatibility
 import radia as rad
+#*** Enable 3D geometry display (ObjDrwOpenGL) + uti_plot fix on Linux/WSL & IPython>=9:
+import os as _os, sys as _sys; _sys.path.append(_os.path.dirname(_os.path.abspath(__file__)))
+import uti_plot_radia  # non-intrusive: patches rad.ObjDrwOpenGL and uti_plot on import
 from uti_plot import *
 from time import *
 from math import *
