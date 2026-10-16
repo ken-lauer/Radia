@@ -43,6 +43,22 @@ directly::
     import uti_plot_radia
     uti_plot_radia.plot_geometry(obj, title='My magnet')
     uti_plot_radia.show()
+
+Backends
+--------
+Two 3-D backends are available; matplotlib is the default (lightweight, headless-
+friendly, always available).  PyVista / VTK gives correct occlusion and true
+interactivity (rotate / zoom / pick), which is preferable for overlapping magnet
+geometry -- inline in Jupyter, or a native window from a script::
+
+    import uti_plot_radia as upr
+    upr.view(obj, backend='pyvista', opacity=0.6)   # one-off, this call only
+    upr.set_backend('pyvista')                       # route rad.ObjDrwOpenGL too
+
+``plot_geometry_pyvista`` exposes ``color``, ``opacity``, ``show_edges`` etc.;
+solid colours otherwise come from ``radia.ObjDrwAtr`` (both backends honour them).
+PyVista is imported lazily, so this module still works where only matplotlib
+(or neither) is installed.
 """
 
 from __future__ import absolute_import, division, print_function
@@ -252,6 +268,211 @@ def savefig(fname, **kwargs):
 
 
 # ---------------------------------------------------------------------------
+# PyVista / VTK rendering (interactive backend)
+# ---------------------------------------------------------------------------
+# matplotlib's 3-D axes use a painter's-algorithm depth sort with no true depth
+# buffer, so overlapping magnets (undulator blocks, iron around coils) can bleed
+# through.  VTK does real GPU occlusion and smooth interaction (rotate / zoom /
+# pick), and RADIA's ObjDrwVTK output is already shaped to feed it.  This backend
+# is optional -- imported lazily so matplotlib-only environments are unaffected.
+
+def _section_to_polydata(section, pv, np, kind):
+    """Build a ``pyvista.PolyData`` from one ObjDrwVTK section.
+
+    Parameters
+    ----------
+    section : dict
+        ``ObjDrwVTK(obj)['polygons']`` or ``['lines']`` (flat vertices / lengths /
+        colors, as documented on :func:`_iter_polygons`).
+    pv, np : module
+        The ``pyvista`` and ``numpy`` modules (passed in to keep imports lazy).
+    kind : {'faces', 'lines'}
+        Whether the cells are filled polygons or polylines.
+
+    Returns
+    -------
+    mesh : pyvista.PolyData
+        Geometry with a per-cell ``'colors'`` uint8 RGB array (0..255) taken from
+        the RADIA ``ObjDrwAtr`` colours.
+    """
+    verts = np.asarray(section['vertices'], dtype=float).reshape(-1, 3)
+
+    # VTK connectivity: each cell is [n, i0, i1, ..., i(n-1)].  RADIA emits the
+    # vertices of every polygon consecutively (not indexed), so the indices just
+    # run in order; duplicate points at shared edges are harmless for display.
+    conn = []
+    i = 0
+    for n in section['lengths']:
+        conn.append(n)
+        conn.extend(range(i, i + n))
+        i += n
+    conn = np.asarray(conn)
+
+    mesh = pv.PolyData(verts, faces=conn) if kind == 'faces' \
+        else pv.PolyData(verts, lines=conn)
+
+    rgb = (np.asarray(section['colors'], dtype=float).reshape(-1, 3) * 255.0)
+    mesh.cell_data['colors'] = rgb.astype(np.uint8)
+    return mesh
+
+
+def plot_geometry_pyvista(obj, color=None, opacity=1.0, show_edges=True,
+                          edge_color='gray', line_width=3, background='white',
+                          notebook=None, off_screen=False, screenshot=None,
+                          window_size=(1024, 768), plotter=None, title=None,
+                          show_axes=True, show=True):
+    """Render RADIA object ``obj`` interactively with PyVista / VTK.
+
+    Correct occlusion and interaction (rotate / zoom / pick) -- a better fit than
+    matplotlib for overlapping magnet geometry.  In Jupyter it renders inline via
+    trame; in a script it opens an interactive VTK window.
+
+    Parameters
+    ----------
+    obj : int
+        RADIA object index.
+    color : color, optional
+        Single colour for every solid (overrides RADIA's per-object ``ObjDrwAtr``
+        colours).  When ``None`` (default) the RADIA colours are used.
+    opacity : float, optional
+        Solid opacity, 0 (transparent) .. 1 (opaque, default).  Lower it to see
+        coils through iron.
+    show_edges : bool, optional
+        Draw polygon edges on the solids.
+    edge_color : color, optional
+        Colour of those edges.
+    line_width : float, optional
+        Width of the ``'lines'`` section (coil paths / object edges).
+    background : color, optional
+        Render-window background colour.
+    notebook : bool, optional
+        Force (``True``) or forbid (``False``) inline Jupyter rendering; ``None``
+        lets PyVista auto-detect.
+    off_screen : bool, optional
+        Render without opening a window (needed for headless screenshots).
+    screenshot : str, optional
+        If given, save a PNG to this path.
+    window_size : tuple of int, optional
+        ``(width, height)`` in pixels for a new plotter.
+    plotter : pyvista.Plotter, optional
+        Draw into an existing plotter instead of creating one (e.g. to overlay
+        several objects); when supplied, ``show`` is ignored.
+    title : str, optional
+        Corner text label.
+    show_axes : bool, optional
+        Show the orientation axes widget and a bounding-box grid with mm labels.
+    show : bool, optional
+        Display the plotter when this call created it.
+
+    Returns
+    -------
+    plotter : pyvista.Plotter
+        The plotter the geometry was drawn into.
+    """
+    import radia as rad
+    import numpy as np
+    import pyvista as pv
+
+    data = rad.ObjDrwVTK(obj)
+
+    own = plotter is None
+    if own:
+        plotter = pv.Plotter(off_screen=off_screen, notebook=notebook,
+                             window_size=window_size)
+        plotter.set_background(background)
+
+    polys = data.get('polygons')
+    if polys and polys['lengths']:
+        mesh = _section_to_polydata(polys, pv, np, 'faces')
+        if color is not None:
+            plotter.add_mesh(mesh, color=color, opacity=opacity,
+                             show_edges=show_edges, edge_color=edge_color)
+        else:
+            plotter.add_mesh(mesh, scalars='colors', rgb=True, opacity=opacity,
+                             show_edges=show_edges, edge_color=edge_color)
+
+    lines = data.get('lines')
+    if lines and lines['lengths']:
+        lmesh = _section_to_polydata(lines, pv, np, 'lines')
+        plotter.add_mesh(lmesh, scalars='colors', rgb=True, line_width=line_width)
+
+    if title is not None:
+        plotter.add_text(str(title), font_size=11)
+    if show_axes:
+        plotter.add_axes()
+        try:
+            plotter.show_grid(xtitle='X [mm]', ytitle='Y [mm]', ztitle='Z [mm]')
+        except Exception:
+            pass
+
+    if screenshot is not None and not (own and show):
+        plotter.screenshot(screenshot)
+    if own and show:
+        plotter.show(screenshot=screenshot)
+    return plotter
+
+
+# ---------------------------------------------------------------------------
+# Backend selection
+# ---------------------------------------------------------------------------
+
+_DEFAULT_BACKEND = 'matplotlib'   # what the patched ObjDrwOpenGL uses
+
+
+def set_backend(name):
+    """Choose which renderer the patched ``ObjDrwOpenGL`` (and :func:`view`) use.
+
+    Parameters
+    ----------
+    name : {'matplotlib', 'mpl', 'pyvista', 'vtk'}
+        ``matplotlib`` (default) is the lightweight, always-available, headless-
+        friendly renderer; ``pyvista`` is the interactive VTK renderer.
+
+    Returns
+    -------
+    str
+        The normalised backend now in effect (``'matplotlib'`` or ``'pyvista'``).
+    """
+    global _DEFAULT_BACKEND
+    key = str(name).lower()
+    if key in ('matplotlib', 'mpl'):
+        _DEFAULT_BACKEND = 'matplotlib'
+    elif key in ('pyvista', 'vtk'):
+        _DEFAULT_BACKEND = 'pyvista'
+    else:
+        raise ValueError("backend must be 'matplotlib' or 'pyvista', got %r" % name)
+    return _DEFAULT_BACKEND
+
+
+def get_backend():
+    """Return the backend currently used by ``ObjDrwOpenGL`` / :func:`view`."""
+    return _DEFAULT_BACKEND
+
+
+def view(obj, backend=None, **kwargs):
+    """Render ``obj`` with the selected (or default) 3-D backend.
+
+    Parameters
+    ----------
+    obj : int
+        RADIA object index.
+    backend : {'matplotlib', 'pyvista', None}, optional
+        Override the module default for this call only.
+    **kwargs
+        Passed through to :func:`plot_geometry` or :func:`plot_geometry_pyvista`.
+
+    Returns
+    -------
+    object
+        The matplotlib ``Axes3D`` or the ``pyvista.Plotter`` used.
+    """
+    key = str(backend or _DEFAULT_BACKEND).lower()
+    if key in ('pyvista', 'vtk'):
+        return plot_geometry_pyvista(obj, **kwargs)
+    return plot_geometry(obj, **kwargs)
+
+
+# ---------------------------------------------------------------------------
 # Monkey patches
 # ---------------------------------------------------------------------------
 
@@ -273,10 +494,14 @@ def patch_objdrwopengl():
 
     def _obj_drw_opengl(obj, *args, **kwargs):
         # Signature-compatible stand-in for radia.ObjDrwOpenGL.  The real viewer
-        # opens a separate native window; our replacement builds a matplotlib
-        # figure.  In an IPython inline session we display it immediately so that
-        # a later uti_plot ``pyplot.close('all')`` cannot discard it before the
-        # cell renders (RADIA examples call ObjDrwOpenGL, then uti_plot*).
+        # opens a separate native window; our replacement renders with whichever
+        # backend set_backend() selected (matplotlib by default).
+        if _DEFAULT_BACKEND == 'pyvista':
+            return plot_geometry_pyvista(obj)
+        # matplotlib path: in an IPython inline session display the figure
+        # immediately so a later uti_plot ``pyplot.close('all')`` cannot discard
+        # it before the cell renders (RADIA examples call ObjDrwOpenGL, then
+        # uti_plot*).
         ax = plot_geometry(obj, show=False)
         fig = ax.figure
         if _is_ipython_inline():
